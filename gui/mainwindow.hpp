@@ -43,6 +43,8 @@ private:
     std::unique_ptr<Ui::MainWindow> m_ui;
     std::optional<SongFile> m_loaded_file;
     std::unique_ptr<QThread> m_thread;
+    QString m_last_directory {"../"};
+    std::optional<SightRead::Instrument> m_last_selected_instrument;
     Settings get_settings() const;
     void load_file(const QString& file_name);
     void populate_games(const std::set<Game>& games);

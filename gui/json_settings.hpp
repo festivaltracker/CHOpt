@@ -19,6 +19,7 @@
 #ifndef CHOPT_JSON_SETTINGS_HPP
 #define CHOPT_JSON_SETTINGS_HPP
 
+#include <string>
 #include <string_view>
 
 struct JsonSettings {
@@ -28,6 +29,7 @@ struct JsonSettings {
     int whammy_delay;
     int video_lag;
     bool is_lefty_flip;
+    std::string last_directory;
 };
 
 JsonSettings load_saved_settings(std::string_view application_dir);

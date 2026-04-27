@@ -18,6 +18,7 @@
 
 #include <filesystem>
 
+#include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -26,6 +27,8 @@
 #include "json_settings.hpp"
 
 namespace {
+constexpr auto DEFAULT_LAST_DIRECTORY = "../";
+
 struct IntRange {
     int min;
     int max;
@@ -45,6 +48,16 @@ bool read_json_bool(const QJsonObject& settings, const QString& name,
                     bool default_value)
 {
     return settings.value(name).toBool(default_value);
+}
+
+std::string read_directory(const QJsonObject& settings, const QString& name)
+{
+    const auto directory = settings.value(name).toString();
+    if (!directory.isEmpty() && QDir(directory).exists()) {
+        return directory.toStdString();
+    }
+
+    return DEFAULT_LAST_DIRECTORY;
 }
 
 QString settings_path(std::string_view application_dir)
@@ -68,6 +81,7 @@ JsonSettings load_saved_settings(std::string_view application_dir)
     settings.whammy_delay = 0;
     settings.video_lag = 0;
     settings.is_lefty_flip = false;
+    settings.last_directory = DEFAULT_LAST_DIRECTORY;
 
     QFile settings_file {settings_path(application_dir)};
     if (!settings_file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -92,6 +106,7 @@ JsonSettings load_saved_settings(std::string_view application_dir)
     settings.video_lag = read_value(
         obj, "video_lag", {.min = MIN_VIDEO_LAG, .max = MAX_VIDEO_LAG}, 0);
     settings.is_lefty_flip = read_json_bool(obj, "lefty_flip", false);
+    settings.last_directory = read_directory(obj, "last_directory");
 
     return settings;
 }
@@ -104,7 +119,9 @@ void save_settings(const JsonSettings& settings,
                              {"lazy_whammy", settings.lazy_whammy},
                              {"whammy_delay", settings.whammy_delay},
                              {"video_lag", settings.video_lag},
-                             {"lefty_flip", settings.is_lefty_flip}};
+                             {"lefty_flip", settings.is_lefty_flip},
+                             {"last_directory",
+                              QString::fromStdString(settings.last_directory)}};
     QFile settings_file {settings_path(application_dir)};
     if (settings_file.open(QIODevice::WriteOnly)) {
         settings_file.write(QJsonDocument(obj).toJson());

@@ -22,7 +22,9 @@
 #include <QDesktopServices>
 #include <QDragEnterEvent>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QMimeData>
+#include <QSignalBlocker>
 #include <QUrl>
 #include <QtSystemDetection>
 
@@ -32,6 +34,8 @@
 #include "ui_mainwindow.h"
 
 namespace {
+constexpr auto DEFAULT_LAST_DIRECTORY = "../";
+
 QFileDialog::Options file_dialog_options()
 {
 #ifdef Q_OS_MACOS
@@ -39,6 +43,16 @@ QFileDialog::Options file_dialog_options()
 #else
     return QFileDialog::Options {};
 #endif
+}
+
+void update_last_directory(QString& last_directory, const QString& file_name)
+{
+    const auto directory = QFileInfo(file_name).absolutePath();
+    if (!directory.isEmpty()) {
+        last_directory = directory;
+    } else {
+        last_directory = DEFAULT_LAST_DIRECTORY;
+    }
 }
 
 class ParserThread : public QThread {
@@ -197,6 +211,7 @@ MainWindow::MainWindow(QWidget* parent)
 
     const auto settings = load_saved_settings(
         QCoreApplication::applicationDirPath().toStdString());
+    m_last_directory = QString::fromStdString(settings.last_directory);
     m_ui->squeezeSlider->setValue(settings.squeeze);
     m_ui->earlyWhammySlider->setValue(settings.early_whammy);
     m_ui->lazyWhammyLineEdit->setText(QString::number(settings.lazy_whammy));
@@ -233,6 +248,7 @@ MainWindow::~MainWindow()
         settings.whammy_delay = 0;
     }
 
+    settings.last_directory = m_last_directory.toStdString();
     save_settings(settings,
                   QCoreApplication::applicationDirPath().toStdString());
 
@@ -345,8 +361,9 @@ Settings MainWindow::get_settings() const
 void MainWindow::on_selectFileButton_clicked()
 {
     const auto file_name = QFileDialog::getOpenFileName(
-        this, "Open song", "../", "Song charts (*.chart *.mid *.mid.qb.*)",
-        nullptr, file_dialog_options());
+        this, "Open song", m_last_directory,
+        "Song charts (*.chart *.mid *.mid.qb.*)", nullptr,
+        file_dialog_options());
     if (file_name.isEmpty()) {
         return;
     }
@@ -367,6 +384,7 @@ void MainWindow::load_file(const QString& file_name)
         return;
     }
 
+    update_last_directory(m_last_directory, file_name);
     m_ui->selectFileButton->setEnabled(false);
     setAcceptDrops(false);
 
@@ -385,23 +403,28 @@ void MainWindow::load_file(const QString& file_name)
 void MainWindow::populate_games(const std::set<Game>& games)
 {
     const auto previous_game = m_ui->engineComboBox->currentData();
-    m_ui->engineComboBox->clear();
-    const std::array<std::pair<Game, QString>, 8> full_game_set {
-        {{Game::CloneHero, "Clone Hero"},
-         {Game::FortniteFestival, "Fortnite Festival"},
-         {Game::GuitarHeroOne, "Guitar Hero 1"},
-         {Game::GuitarHeroTwo, "Guitar Hero 2"},
-         {Game::GuitarHeroThree, "Guitar Hero 3"},
-         {Game::RockBand, "Rock Band"},
-         {Game::RockBandThree, "Rock Band 3"},
-         {Game::Yarg, "YARG"}}};
-    for (const auto& [game, name] : full_game_set) {
-        if (games.contains(game)) {
-            m_ui->engineComboBox->addItem(name, QVariant::fromValue(game));
+    {
+        const QSignalBlocker engine_blocker {m_ui->engineComboBox};
+        m_ui->engineComboBox->clear();
+        const std::array<std::pair<Game, QString>, 8> full_game_set {
+            {{Game::CloneHero, "Clone Hero"},
+             {Game::FortniteFestival, "Fortnite Festival"},
+             {Game::GuitarHeroOne, "Guitar Hero 1"},
+             {Game::GuitarHeroTwo, "Guitar Hero 2"},
+             {Game::GuitarHeroThree, "Guitar Hero 3"},
+             {Game::RockBand, "Rock Band"},
+             {Game::RockBandThree, "Rock Band 3"},
+             {Game::Yarg, "YARG"}}};
+        for (const auto& [game, name] : full_game_set) {
+            if (games.contains(game)) {
+                m_ui->engineComboBox->addItem(name, QVariant::fromValue(game));
+            }
         }
+
+        restore_combo_box_value(*m_ui->engineComboBox, previous_game);
     }
 
-    restore_combo_box_value(*m_ui->engineComboBox, previous_game);
+    on_engineComboBox_currentIndexChanged(m_ui->engineComboBox->currentIndex());
 }
 
 void MainWindow::on_findPathButton_clicked()
@@ -418,7 +441,7 @@ void MainWindow::on_findPathButton_clicked()
     }
 
     const auto file_name = QFileDialog::getSaveFileName(
-        this, "Save image", ".", "Images (*.png *.bmp)", nullptr,
+        this, "Save image", m_last_directory, "Images (*.png *.bmp)", nullptr,
         file_dialog_options());
     if (file_name.isEmpty()) {
         return;
@@ -428,6 +451,7 @@ void MainWindow::on_findPathButton_clicked()
         return;
     }
 
+    update_last_directory(m_last_directory, file_name);
     m_ui->selectFileButton->setEnabled(false);
     m_ui->findPathButton->setEnabled(false);
 
@@ -487,33 +511,44 @@ void MainWindow::on_engineComboBox_currentIndexChanged(int index)
         return;
     }
 
-    const auto previous_instrument = m_ui->instrumentComboBox->currentData();
-    m_ui->instrumentComboBox->clear();
-    const std::map<SightRead::Instrument, QString> INST_NAMES {
-        {SightRead::Instrument::Guitar, "Guitar"},
-        {SightRead::Instrument::GuitarCoop, "Guitar Co-op"},
-        {SightRead::Instrument::Bass, "Bass"},
-        {SightRead::Instrument::Rhythm, "Rhythm"},
-        {SightRead::Instrument::Keys, "Keys"},
-        {SightRead::Instrument::GHLGuitar, "GHL Guitar"},
-        {SightRead::Instrument::GHLBass, "GHL Bass"},
-        {SightRead::Instrument::GHLRhythm, "GHL Rhythm"},
-        {SightRead::Instrument::GHLGuitarCoop, "GHL Guitar Co-op"},
-        {SightRead::Instrument::Drums, "Drums"},
-        {SightRead::Instrument::FortniteGuitar, "Guitar"},
-        {SightRead::Instrument::FortniteBass, "Bass"},
-        {SightRead::Instrument::FortniteDrums, "Drums"},
-        {SightRead::Instrument::FortniteVocals, "Vocals"},
-        {SightRead::Instrument::FortniteProGuitar, "Pro Guitar"},
-        {SightRead::Instrument::FortniteProBass, "Pro Bass"},
-        {SightRead::Instrument::FortniteProDrums, "Pro Drums"}};
-    const auto game = m_ui->engineComboBox->currentData().value<Game>();
-    for (auto inst : m_loaded_file->load_song(game).instruments()) {
-        m_ui->instrumentComboBox->addItem(INST_NAMES.at(inst),
-                                          QVariant::fromValue(inst));
+    const auto instrument_to_restore = m_last_selected_instrument;
+    {
+        const QSignalBlocker instrument_blocker {m_ui->instrumentComboBox};
+        m_ui->instrumentComboBox->clear();
+        const std::map<SightRead::Instrument, QString> INST_NAMES {
+            {SightRead::Instrument::Guitar, "Guitar"},
+            {SightRead::Instrument::GuitarCoop, "Guitar Co-op"},
+            {SightRead::Instrument::Bass, "Bass"},
+            {SightRead::Instrument::Rhythm, "Rhythm"},
+            {SightRead::Instrument::Keys, "Keys"},
+            {SightRead::Instrument::GHLGuitar, "GHL Guitar"},
+            {SightRead::Instrument::GHLBass, "GHL Bass"},
+            {SightRead::Instrument::GHLRhythm, "GHL Rhythm"},
+            {SightRead::Instrument::GHLGuitarCoop, "GHL Guitar Co-op"},
+            {SightRead::Instrument::Drums, "Drums"},
+            {SightRead::Instrument::FortniteGuitar, "Guitar"},
+            {SightRead::Instrument::FortniteBass, "Bass"},
+            {SightRead::Instrument::FortniteDrums, "Drums"},
+            {SightRead::Instrument::FortniteVocals, "Vocals"},
+            {SightRead::Instrument::FortniteProGuitar, "Pro Guitar"},
+            {SightRead::Instrument::FortniteProBass, "Pro Bass"},
+            {SightRead::Instrument::FortniteProDrums, "Pro Drums"}};
+        const auto game = m_ui->engineComboBox->currentData().value<Game>();
+        for (auto inst : m_loaded_file->load_song(game).instruments()) {
+            m_ui->instrumentComboBox->addItem(INST_NAMES.at(inst),
+                                              QVariant::fromValue(inst));
+        }
+
+        if (instrument_to_restore.has_value()) {
+            restore_combo_box_value(*m_ui->instrumentComboBox,
+                                    QVariant::fromValue(*instrument_to_restore));
+        } else {
+            restore_combo_box_value(*m_ui->instrumentComboBox, {});
+        }
     }
 
-    restore_combo_box_value(*m_ui->instrumentComboBox, previous_instrument);
+    on_instrumentComboBox_currentIndexChanged(m_ui->instrumentComboBox
+                                                  ->currentIndex());
 }
 
 void MainWindow::on_instrumentComboBox_currentIndexChanged(int index)
@@ -526,6 +561,8 @@ void MainWindow::on_instrumentComboBox_currentIndexChanged(int index)
         return;
     }
 
+    m_last_selected_instrument = m_ui->instrumentComboBox->currentData()
+                                     .value<SightRead::Instrument>();
     const auto previous_difficulty = m_ui->difficultyComboBox->currentData();
     m_ui->difficultyComboBox->clear();
     const std::map<SightRead::Difficulty, QString> DIFF_NAMES {
