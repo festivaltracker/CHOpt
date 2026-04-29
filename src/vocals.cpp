@@ -920,7 +920,7 @@ VocalsProcessedSong::path_summary(const VocalPath& path,
         }
         stream << squeeze_suffix(activation.esf_annotation, notation);
 
-        phrase_cursor = activation.start_phrase_index;
+        phrase_cursor = activation.end_phrase_index + 1;
     }
     return stream.str();
 }

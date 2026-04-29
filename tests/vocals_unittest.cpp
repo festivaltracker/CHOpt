@@ -297,6 +297,54 @@ BOOST_AUTO_TEST_CASE(vocal_path_summary_reports_skipped_activation_windows)
 }
 
 BOOST_AUTO_TEST_CASE(
+    vocal_path_summary_counts_sp_phrases_after_the_previous_activation)
+{
+    const auto track = make_vocal_track(
+        {{.position = SightRead::Tick {0},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {192},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {384},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = false},
+         {.position = SightRead::Tick {576},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {768},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {960},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {1152},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {1344},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = false}});
+    const VocalsProcessedSong song {track, default_rb_vocals_pathing_settings()};
+    const VocalPath path {
+        .activations = {{.start_phrase_index = 2,
+                         .end_phrase_index = 3,
+                         .start = song.phrases().at(2).start,
+                         .end = song.phrases().at(3).end,
+                         .sp_start = 0.5},
+                        {.start_phrase_index = 7,
+                         .end_phrase_index = 7,
+                         .start = song.phrases().at(7).start,
+                         .end = song.phrases().at(7).end,
+                         .sp_start = 0.75}},
+        .phrase_score_boosts = {0, 0, 0, 0, 0, 0, 0, 0},
+        .score_boost = 0};
+
+    BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 2/ 3/");
+    BOOST_CHECK_EQUAL(song.path_summary(path, VocalPathNotation::ScoreHero),
+                      "Acts: 2/ 3/");
+}
+
+BOOST_AUTO_TEST_CASE(
     multiple_internal_phrase_gaps_create_multiple_windows_for_one_phrase)
 {
     const auto track = make_vocal_track(
