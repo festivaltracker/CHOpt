@@ -132,7 +132,9 @@ public:
     [[nodiscard]] std::vector<double>
     sp_percent_values(const std::vector<double>& measure_lines,
                       const VocalPath& path) const;
-    [[nodiscard]] std::string path_summary(const VocalPath& path) const;
+    [[nodiscard]] std::string
+    path_summary(const VocalPath& path,
+                 VocalPathNotation notation = VocalPathNotation::Rbpv) const;
 };
 
 class VocalsOptimiser {

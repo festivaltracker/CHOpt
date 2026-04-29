@@ -43,6 +43,8 @@ enum class Game : std::uint8_t {
     Yarg
 };
 
+enum class VocalPathNotation : std::uint8_t { Rbpv, ScoreHero };
+
 std::unique_ptr<Engine> game_to_engine(Game game,
                                        SightRead::Instrument instrument,
                                        bool precision_mode);
@@ -71,6 +73,7 @@ struct Settings {
     int speed;
     bool is_lefty_flip;
     Game game;
+    VocalPathNotation vocal_path_notation;
     PathingSettings pathing_settings;
     float opacity;
 };

@@ -17,7 +17,7 @@ namespace {
 constexpr double SP_BUCKET_SCALE = 1000.0;
 constexpr double SP_EPSILON = 0.000001;
 constexpr double FULL_SP_UNITS = 8.0;
-constexpr double MIN_INTERNAL_WINDOW_SECONDS = 0.5;
+constexpr double MIN_INTERNAL_WINDOW_SECONDS = 0.6;
 constexpr std::int64_t SCORE_UNIT_SCALE = 1000000;
 
 using BeatRange = std::tuple<SightRead::Beat, SightRead::Beat>;
@@ -305,11 +305,33 @@ std::string esf_annotation(const VocalPhraseInfo& phrase,
         || boosted_start.value() >= phrase.end.value() - SP_EPSILON) {
         return "";
     }
+    if (phrase.pie.raw_units_between(phrase.start, boosted_start, false)
+        <= SP_EPSILON) {
+        return "";
+    }
     if (required_prefill_fraction <= SP_EPSILON) {
         return "S";
     }
     return "S" + std::to_string(static_cast<int>(std::ceil(
                      required_prefill_fraction * 100.0 - SP_EPSILON)));
+}
+
+std::string squeeze_suffix(const std::string& annotation,
+                           VocalPathNotation notation)
+{
+    if (annotation.empty()) {
+        return "";
+    }
+    if (notation == VocalPathNotation::Rbpv) {
+        return annotation;
+    }
+    if (annotation == "S") {
+        return "-ESF";
+    }
+    if (annotation.front() == 'S') {
+        return "-ESP";
+    }
+    return "";
 }
 
 struct PhraseScoreGain {
@@ -668,26 +690,28 @@ VocalsProcessedSong::VocalsProcessedSong(const SightRead::VocalTrack& track,
                              .scored_segments = std::move(scored_segments),
                              .pie = std::move(pie)});
 
-        if (merged_segments.empty()) {
-            add_internal_window(i, phrase_start, phrase_end);
+    }
+
+    std::optional<SightRead::Beat> previous_content_end;
+    for (std::size_t i = 0; i < m_phrases.size(); ++i) {
+        const auto& phrase = m_phrases.at(i);
+        if (phrase.scored_segments.empty()) {
+            if (!previous_content_end.has_value()) {
+                add_internal_window(i, phrase.start, phrase.end);
+            }
             continue;
         }
 
-        add_internal_window(i, phrase_start, std::get<0>(merged_segments.front()));
-        for (std::size_t segment_index = 1; segment_index < merged_segments.size();
-             ++segment_index) {
-            const auto gap_start
-                = std::get<1>(merged_segments.at(segment_index - 1));
-            const auto gap_end = std::get<0>(merged_segments.at(segment_index));
-            add_internal_window(i, gap_start, gap_end);
+        const auto first_content_start = phrase.scored_segments.front().start;
+        add_internal_window(i, previous_content_end.value_or(phrase.start),
+                            first_content_start);
+        for (std::size_t segment_index = 1;
+             segment_index < phrase.scored_segments.size(); ++segment_index) {
+            add_internal_window(i,
+                                phrase.scored_segments.at(segment_index - 1).end,
+                                phrase.scored_segments.at(segment_index).start);
         }
-        add_internal_window(i, std::get<1>(merged_segments.back()), phrase_end);
-    }
-
-    for (std::size_t i = 1; i < m_phrases.size(); ++i) {
-        const auto& previous = m_phrases.at(i - 1);
-        const auto& current = m_phrases.at(i);
-        add_internal_window(i, previous.end, current.start);
+        previous_content_end = phrase.scored_segments.back().end;
     }
 
     std::ranges::sort(m_activation_windows, [](const auto& lhs, const auto& rhs) {
@@ -821,25 +845,82 @@ VocalsProcessedSong::activation_starts(std::size_t phrase_index) const
     return m_activation_starts.at(phrase_index);
 }
 
-std::string VocalsProcessedSong::path_summary(const VocalPath& path) const
+std::string
+VocalsProcessedSong::path_summary(const VocalPath& path,
+                                  VocalPathNotation notation) const
 {
     if (path.activations.empty()) {
         return "No activations";
     }
 
     std::ostringstream stream;
-    stream << std::fixed << std::setprecision(2);
     stream << "Acts: ";
+    auto phrase_cursor = std::size_t {0};
     for (std::size_t i = 0; i < path.activations.size(); ++i) {
         if (i != 0) {
-            stream << ", ";
+            stream << ' ';
         }
-        const auto start_measure
-            = m_tempo_map.to_measures(path.activations.at(i).start).value();
-        stream << start_measure << 'm';
-        if (!path.activations.at(i).esf_annotation.empty()) {
-            stream << ' ' << path.activations.at(i).esf_annotation;
+
+        const auto& activation = path.activations.at(i);
+        auto od_phrase_count = 0;
+        auto ready_beat = std::optional<SightRead::Beat> {};
+        for (std::size_t phrase_index = phrase_cursor;
+             phrase_index < m_phrases.size(); ++phrase_index) {
+            const auto& phrase = m_phrases.at(phrase_index);
+            if (phrase.end.value() > activation.start.value() + SP_EPSILON) {
+                break;
+            }
+            if (phrase.is_sp_phrase) {
+                ++od_phrase_count;
+                ready_beat = phrase.end;
+            }
         }
+        if (od_phrase_count == 0) {
+            od_phrase_count = std::max(
+                1, static_cast<int>(std::lround(
+                       activation.sp_start / m_sp_engine_values.phrase_amount)));
+            ready_beat = activation.start;
+        }
+
+        auto current_window_index = std::optional<std::size_t> {};
+        for (std::size_t window_index = 0;
+             window_index < m_activation_windows.size(); ++window_index) {
+            const auto& window = m_activation_windows.at(window_index);
+            if (window.start.value() <= activation.start.value() + SP_EPSILON
+                && activation.start.value()
+                    <= window.end.value() + SP_EPSILON) {
+                current_window_index = window_index;
+                break;
+            }
+        }
+
+        auto skip_count = 0;
+        const auto window_limit
+            = current_window_index.value_or(m_activation_windows.size());
+        for (std::size_t window_index = 0; window_index < window_limit;
+             ++window_index) {
+            const auto& window = m_activation_windows.at(window_index);
+            if (window.end.value() <= ready_beat->value() + SP_EPSILON
+                || window.start.value()
+                    >= activation.start.value() - SP_EPSILON
+                || window.target_phrase_index < phrase_cursor) {
+                continue;
+            }
+            ++skip_count;
+        }
+
+        stream << od_phrase_count << '/';
+        if (skip_count > 0) {
+            if (notation == VocalPathNotation::ScoreHero) {
+                stream << "sk";
+            } else {
+                stream << 's';
+            }
+            stream << skip_count;
+        }
+        stream << squeeze_suffix(activation.esf_annotation, notation);
+
+        phrase_cursor = activation.start_phrase_index;
     }
     return stream.str();
 }

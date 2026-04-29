@@ -288,6 +288,11 @@ class FortniteVocalsEngine final : public BaseFortniteEngine {
     [[nodiscard]] int sust_points_per_beat() const override { return 25; }
 };
 
+class FortniteKaraokeEngine final : public BaseFortniteEngine {
+    [[nodiscard]] int max_multiplier() const override { return 4; }
+    [[nodiscard]] int sust_points_per_beat() const override { return 25; }
+};
+
 class BaseHarmonixGhEngine : public Engine {
 private:
     static constexpr double FUDGE_EPSILON = 0.0001;

@@ -42,12 +42,23 @@ int main(int argc, char** argv)
             = from_args(QCoreApplication::arguments(), q_stderr);
         const SongFile song_file {settings.filename};
         auto song = song_file.load_song(settings.game);
-        const auto& track
-            = song.track(settings.instrument, settings.difficulty);
         const std::atomic<bool> terminate {false};
-        const auto builder = make_builder(
-            song, track, settings, [&](auto p) { q_stdout << p << '\n'; },
-            &terminate);
+        const auto builder = [&]() {
+            if (settings.instrument == SightRead::Instrument::Vocals) {
+                const auto& track
+                    = song.vocal_track(settings.instrument,
+                                       settings.difficulty);
+                return make_builder(
+                    song, track, settings,
+                    [&](auto p) { q_stdout << p << '\n'; }, &terminate);
+            }
+
+            const auto& track
+                = song.track(settings.instrument, settings.difficulty);
+            return make_builder(song, track, settings,
+                                [&](auto p) { q_stdout << p << '\n'; },
+                                &terminate);
+        }();
         q_stdout.flush();
         if (settings.draw_image) {
             const Image image {builder};

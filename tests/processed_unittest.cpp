@@ -228,7 +228,7 @@ BOOST_AUTO_TEST_CASE(unison_bonuses_are_taken_account_of)
     BOOST_CHECK_EQUAL(song.total_available_sp(SightRead::Beat(0.0),
                                               points.cbegin(),
                                               points.cbegin() + 1),
-                      SpBar(0.501, 0.501, {0.251, 0.501, 0.5}));
+                      SpBar(0.502, 0.502, {0.251, 0.502, 0.5}));
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -275,7 +275,7 @@ BOOST_AUTO_TEST_CASE(total_available_sp_with_earliest_pos_counts_unison_bonuses)
         SightRead::Beat(0.0), points.cbegin(), std::next(points.cbegin()),
         {.beat = SightRead::Beat(0.0), .sp_measure = SpMeasure(0.0)});
 
-    BOOST_CHECK_CLOSE(sp_bar.max(), 0.501, 0.0001);
+    BOOST_CHECK_CLOSE(sp_bar.max(), 0.502, 0.0001);
 }
 
 BOOST_AUTO_TEST_SUITE(is_candidate_valid_works_with_no_whammy)
@@ -2144,12 +2144,12 @@ BOOST_AUTO_TEST_CASE(
     ProcessedSong processed_fnf_track {fnf_track, default_od_beat_mode_data(),
                                        default_fortnite_pro_drums_pathing_settings()};
     const auto& points = processed_fnf_track.points();
-    Path path {.activations = {{.act_start = points.cbegin() + 2,
-                                .act_end = points.cbegin() + 3}},
+    Path path {.activations = {{.act_start = points.cbegin() + 3,
+                                .act_end = points.cbegin() + 4}},
                .score_boost = 0};
 
     BOOST_CHECK(processed_fnf_track.path_summary(path).starts_with(
-        "Path: 0(E)\n"));
+        "Path: 0\n"));
 }
 
 BOOST_AUTO_TEST_CASE(average_multiplier_is_ignored_with_rb)

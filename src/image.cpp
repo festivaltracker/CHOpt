@@ -73,6 +73,11 @@ std::tuple<int, int> get_xy(const ImageBuilder& builder, double pos)
     return {x, y};
 }
 
+bool is_vocals_track(const ImageBuilder& builder)
+{
+    return builder.track_type() == SightRead::TrackType::Vocals;
+}
+
 int numb_of_fret_lines(SightRead::TrackType track_type)
 {
     switch (track_type) {
@@ -83,6 +88,8 @@ int numb_of_fret_lines(SightRead::TrackType track_type)
         return 2;
     case SightRead::TrackType::Drums:
         return 3;
+    case SightRead::TrackType::Vocals:
+        return 4;
     }
 
     throw std::invalid_argument("Invalid TrackType");
@@ -157,6 +164,29 @@ struct SustainColour {
     float opacity;
     std::tuple<int, int> y_range;
 };
+
+std::tuple<int, int> vocal_y_range(const ImageBuilder& builder,
+                                   const DrawnVocalTube& tube)
+{
+    constexpr int BAND_HALF_HEIGHT = 2;
+    constexpr int TALKY_MIN = MEASURE_HEIGHT / 2 - 4;
+    constexpr int TALKY_MAX = MEASURE_HEIGHT / 2 + 4;
+
+    if (tube.type != SightRead::VocalTubeType::Pitched) {
+        return {TALKY_MIN, TALKY_MAX};
+    }
+
+    const auto pitch_span
+        = std::max(builder.max_vocal_pitch() - builder.min_vocal_pitch(), 1);
+    const auto pitch_offset = std::clamp(
+        tube.pitch - builder.min_vocal_pitch(), 0, pitch_span);
+    const auto normalised = static_cast<double>(pitch_offset) / pitch_span;
+    const auto centre = static_cast<int>(
+        std::lround((MEASURE_HEIGHT - 1) * (1.0 - normalised)));
+    const auto y_min = std::max(0, centre - BAND_HALF_HEIGHT);
+    const auto y_max = std::min(MEASURE_HEIGHT - 1, centre + BAND_HALF_HEIGHT);
+    return {y_min, y_max};
+}
 }
 
 class ImageImpl {
@@ -167,6 +197,8 @@ private:
     void draw_sprite(const QImage& sprite, int x, int y);
     void draw_note(const ImageBuilder& builder, const DrawnNote& note);
     void draw_sustain(const ImageBuilder& builder, const DrawnNote& note);
+    void draw_vocal_tubes(const ImageBuilder& builder);
+    void draw_vocal_lyrics(const ImageBuilder& builder);
     void draw_quarter_note(int x, int y);
     void draw_text_backwards(int x, int y, const char* text,
                              const unsigned char* color, float opacity,
@@ -197,6 +229,7 @@ public:
     void draw_measures(const ImageBuilder& builder);
     void draw_notes(const ImageBuilder& builder);
     void draw_practice_sections(const ImageBuilder& builder);
+    void draw_phrase_boundaries(const ImageBuilder& builder);
     void draw_score_totals(const ImageBuilder& builder);
     void draw_tempos(const ImageBuilder& builder);
     void draw_time_sigs(const ImageBuilder& builder);
@@ -390,6 +423,12 @@ void ImageImpl::draw_text_backwards(int x, int y, const char* text,
 
 void ImageImpl::draw_notes(const ImageBuilder& builder)
 {
+    if (is_vocals_track(builder)) {
+        draw_vocal_tubes(builder);
+        draw_vocal_lyrics(builder);
+        return;
+    }
+
     // We draw all the kicks first because we want RYBG to lie on top of the
     // kicks, not underneath.
     for (const auto& note : builder.notes()) {
@@ -401,6 +440,47 @@ void ImageImpl::draw_notes(const ImageBuilder& builder)
     for (const auto& note : builder.notes()) {
         if (!is_kick_note(builder, note)) {
             draw_note(builder, note);
+        }
+    }
+}
+
+void ImageImpl::draw_vocal_tubes(const ImageBuilder& builder)
+{
+    constexpr std::array<unsigned char, 3> CYAN {0, 160, 160};
+    constexpr std::array<unsigned char, 3> GREY {96, 96, 96};
+    constexpr float TUBE_OPACITY = 0.8F;
+
+    for (const auto& tube : builder.vocal_tubes()) {
+        const auto colour = tube.type == SightRead::VocalTubeType::Pitched
+            ? CYAN
+            : GREY;
+        colour_beat_range(builder, colour, {tube.start, tube.end},
+                          vocal_y_range(builder, tube), TUBE_OPACITY);
+    }
+}
+
+void ImageImpl::draw_vocal_lyrics(const ImageBuilder& builder)
+{
+    constexpr std::array<unsigned char, 3> BLACK {0, 0, 0};
+    constexpr int LYRIC_OFFSET = MEASURE_HEIGHT - FONT_HEIGHT - 2;
+
+    for (const auto& lyric : builder.lyrics()) {
+        auto [x, y] = get_xy(builder, lyric.beat);
+        m_image.draw_text(x, y + LYRIC_OFFSET, "%s", BLACK.data(), 0, 1.0,
+                          FONT_HEIGHT, lyric.text.c_str());
+    }
+}
+
+void ImageImpl::draw_phrase_boundaries(const ImageBuilder& builder)
+{
+    constexpr std::array<unsigned char, 3> BLACK {0, 0, 0};
+    constexpr int HALF_WIDTH = 1;
+
+    for (const auto& [start, end] : builder.phrase_ranges()) {
+        for (const auto pos : {start, end}) {
+            auto [x, y] = get_xy(builder, pos);
+            m_image.draw_rectangle(x - HALF_WIDTH, y, x + HALF_WIDTH,
+                                   y + MEASURE_HEIGHT - 1, BLACK.data(), 1.0F);
         }
     }
 }
@@ -564,7 +644,6 @@ Image::Image(const ImageBuilder& builder)
     constexpr std::array<unsigned char, 3> red {255, 0, 0};
     constexpr std::array<unsigned char, 3> solo_blue {0, 51, 128};
     constexpr std::array<unsigned char, 3> pink {127, 0, 0};
-
     constexpr unsigned int IMAGE_WIDTH = 1024;
     constexpr float RANGE_OPACITY = 0.33333F;
     constexpr int SOLO_HEIGHT = 10;
@@ -602,6 +681,13 @@ Image::Image(const ImageBuilder& builder)
             RANGE_OPACITY / 2);
     }
 
+    for (const auto& range : builder.window_ranges()) {
+        m_impl->colour_beat_range(
+            builder, pink, range,
+            {-SOLO_HEIGHT, MEASURE_HEIGHT - 1 + SOLO_HEIGHT},
+            RANGE_OPACITY / 2);
+    }
+
     for (const auto& range : builder.unison_ranges()) {
         m_impl->colour_beat_range(builder, yellow, range, {-SOLO_HEIGHT, -1},
                                   RANGE_OPACITY / 2);
@@ -612,7 +698,6 @@ Image::Image(const ImageBuilder& builder)
     }
 
     m_impl->draw_notes(builder);
-    m_impl->draw_score_totals(builder);
 
     for (const auto& range : builder.green_ranges()) {
         m_impl->colour_beat_range(builder, green, range,
@@ -630,6 +715,12 @@ Image::Image(const ImageBuilder& builder)
         m_impl->colour_beat_range(builder, blue, range, {0, MEASURE_HEIGHT - 1},
                                   builder.activation_opacity());
     }
+
+    if (is_vocals_track(builder)) {
+        m_impl->draw_phrase_boundaries(builder);
+    }
+
+    m_impl->draw_score_totals(builder);
 }
 
 Image::~Image() = default;

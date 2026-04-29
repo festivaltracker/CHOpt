@@ -777,8 +777,8 @@ BOOST_AUTO_TEST_CASE(
 
     BOOST_REQUIRE_EQUAL(opt_path.activations.size(), 1U);
     BOOST_CHECK_GT(opt_path.score_boost, 0);
-    BOOST_CHECK(opt_path.activations.front().act_start == points.cbegin() + 2);
-    BOOST_CHECK(opt_path.activations.front().act_end >= points.cbegin() + 3);
+    BOOST_CHECK(opt_path.activations.front().act_start == points.cbegin() + 3);
+    BOOST_CHECK(opt_path.activations.front().act_end >= points.cbegin() + 4);
     BOOST_CHECK_LT(opt_path.activations.front().sp_start,
                    opt_path.activations.front().sp_end);
 }

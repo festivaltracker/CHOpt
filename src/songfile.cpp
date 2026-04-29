@@ -50,6 +50,7 @@ std::set<SightRead::Instrument> permitted_instruments(Game game)
                 SightRead::Instrument::FortniteBass,
                 SightRead::Instrument::FortniteDrums,
                 SightRead::Instrument::FortniteVocals,
+                SightRead::Instrument::Vocals,
                 SightRead::Instrument::FortniteProGuitar,
                 SightRead::Instrument::FortniteProBass,
                 SightRead::Instrument::FortniteProDrums};
@@ -58,10 +59,12 @@ std::set<SightRead::Instrument> permitted_instruments(Game game)
     case Game::GuitarHeroThree:
         return {SightRead::Instrument::Guitar};
     case Game::RockBand:
-        return {SightRead::Instrument::Guitar, SightRead::Instrument::Bass};
+        return {SightRead::Instrument::Guitar, SightRead::Instrument::Bass,
+                SightRead::Instrument::Vocals};
     case Game::RockBandThree:
         return {SightRead::Instrument::Guitar, SightRead::Instrument::Bass,
-                SightRead::Instrument::Keys, SightRead::Instrument::Drums};
+                SightRead::Instrument::Keys, SightRead::Instrument::Drums,
+                SightRead::Instrument::Vocals};
     default:
         throw std::invalid_argument("Invalid Game");
     }

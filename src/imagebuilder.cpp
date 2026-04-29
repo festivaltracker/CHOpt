@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <iterator>
+#include <limits>
 
 #include "imagebuilder.hpp"
 #include "optimiser.hpp"
@@ -146,6 +147,125 @@ std::vector<DrawnRow> drawn_rows(const SightRead::NoteTrack& track)
                 tempo_map, SightRead::Beat {current_beat + row_length});
             if (contribution > MAX_BEATS_PER_LINE && row_length == 0.0) {
                 // Break up a measure that spans more than a full row.
+                while (contribution > MAX_BEATS_PER_LINE) {
+                    rows.push_back({.start = current_beat,
+                                    .end = current_beat + MAX_BEATS_PER_LINE});
+                    current_beat += MAX_BEATS_PER_LINE;
+                    contribution -= MAX_BEATS_PER_LINE;
+                }
+            }
+            if (contribution + row_length > MAX_BEATS_PER_LINE) {
+                break;
+            }
+            row_length += contribution;
+            if (current_beat + row_length > max_beat) {
+                break;
+            }
+        }
+        rows.push_back(
+            {.start = current_beat, .end = current_beat + row_length});
+        current_beat += row_length;
+    }
+
+    return rows;
+}
+
+std::string clean_lyric_text(std::string text)
+{
+    while (!text.empty()) {
+        const auto suffix = text.back();
+        if (suffix != '#' && suffix != '^' && suffix != '%' && suffix != '=') {
+            break;
+        }
+        text.pop_back();
+    }
+    if (text == "+") {
+        return "";
+    }
+    return text;
+}
+
+std::vector<DrawnVocalTube> drawn_vocal_tubes(const SightRead::VocalTrack& track)
+{
+    std::vector<DrawnVocalTube> tubes;
+    const auto& tempo_map = track.global_data().tempo_map();
+    for (const auto& tube : track.tubes()) {
+        const auto tube_start = tempo_map.to_beats(tube.position).value();
+        const auto tube_end
+            = tempo_map.to_beats(tube.position + tube.length).value();
+        const auto is_sp_phrase = std::ranges::any_of(
+            track.phrases(), [&](const auto& phrase) {
+                return phrase.is_sp_phrase
+                    && tube.position >= phrase.position
+                    && tube.position < phrase.position + phrase.length;
+            });
+        tubes.push_back({.start = tube_start,
+                         .end = tube_end,
+                         .pitch = tube.pitch,
+                         .type = tube.type,
+                         .is_sp_phrase = is_sp_phrase});
+    }
+    return tubes;
+}
+
+std::vector<DrawnLyric> drawn_lyrics(const SightRead::VocalTrack& track)
+{
+    std::vector<DrawnLyric> lyrics;
+    const auto& tempo_map = track.global_data().tempo_map();
+    for (const auto& lyric : track.lyrics()) {
+        auto text = clean_lyric_text(lyric.text);
+        if (text.empty()) {
+            continue;
+        }
+        lyrics.push_back(
+            {.beat = tempo_map.to_beats(lyric.position).value(),
+             .text = std::move(text)});
+    }
+    return lyrics;
+}
+
+std::pair<int, int> vocal_pitch_range(const SightRead::VocalTrack& track)
+{
+    int min_pitch = std::numeric_limits<int>::max();
+    int max_pitch = std::numeric_limits<int>::min();
+    for (const auto& tube : track.tubes()) {
+        if (tube.type != SightRead::VocalTubeType::Pitched) {
+            continue;
+        }
+        min_pitch = std::min(min_pitch, tube.pitch);
+        max_pitch = std::max(max_pitch, tube.pitch);
+    }
+    if (min_pitch == std::numeric_limits<int>::max()) {
+        return {60, 72};
+    }
+    if (min_pitch == max_pitch) {
+        --min_pitch;
+        ++max_pitch;
+    }
+    return {min_pitch, max_pitch};
+}
+
+std::vector<DrawnRow> drawn_rows(const SightRead::VocalTrack& track)
+{
+    SightRead::Tick max_pos {0};
+    for (const auto& phrase : track.phrases()) {
+        max_pos = std::max(max_pos, phrase.position + phrase.length);
+    }
+    for (const auto& tube : track.tubes()) {
+        max_pos = std::max(max_pos, tube.position + tube.length);
+    }
+
+    const auto& tempo_map = track.global_data().tempo_map();
+    const auto max_beat = tempo_map.to_beats(max_pos).value();
+    auto current_beat = 0.0;
+    std::vector<DrawnRow> rows;
+
+    while (current_beat <= max_beat) {
+        auto row_length = 0.0;
+        while (true) {
+            auto contribution = get_beat_rate(
+                tempo_map, SightRead::Beat {current_beat + row_length});
+            if (contribution > MAX_BEATS_PER_LINE && row_length == 0.0) {
                 while (contribution > MAX_BEATS_PER_LINE) {
                     rows.push_back({.start = current_beat,
                                     .end = current_beat + MAX_BEATS_PER_LINE});
@@ -368,6 +488,23 @@ ImageBuilder::ImageBuilder(const SightRead::NoteTrack& track,
     form_beat_lines(track.global_data().tempo_map());
 }
 
+ImageBuilder::ImageBuilder(const SightRead::VocalTrack& track,
+                           SightRead::Difficulty difficulty,
+                           bool is_lefty_flip)
+    : m_track_type {track.track_type()}
+    , m_difficulty {difficulty}
+    , m_is_lefty_flip {is_lefty_flip}
+    , m_rows {drawn_rows(track)}
+    , m_vocal_tubes {drawn_vocal_tubes(track)}
+    , m_lyrics {drawn_lyrics(track)}
+    , m_overlap_engine {true}
+{
+    const auto [min_pitch, max_pitch] = vocal_pitch_range(track);
+    m_min_vocal_pitch = min_pitch;
+    m_max_vocal_pitch = max_pitch;
+    form_beat_lines(track.global_data().tempo_map());
+}
+
 void ImageBuilder::add_bpms(const SightRead::TempoMap& tempo_map)
 {
     m_bpms.clear();
@@ -478,21 +615,37 @@ void ImageBuilder::add_measure_values(const PointSet& points,
     }
 }
 
+void ImageBuilder::add_measure_values(const VocalsProcessedSong& song,
+                                      const VocalPath& path)
+{
+    m_base_values = song.base_score_values(m_measure_lines);
+    m_score_values = song.running_score_values(m_measure_lines, path);
+}
+
 void ImageBuilder::add_practice_sections(
     const std::vector<SightRead::PracticeSection>& practice_sections,
     const SightRead::TempoMap& tempo_map)
 {
-    if (m_notes.empty()) {
+    std::optional<double> last_drawn_position;
+    if (!m_notes.empty()) {
+        const auto last_note = std::ranges::max_element(
+            m_notes, [](auto a, auto b) { return a.beat < b.beat; });
+        last_drawn_position = last_note->beat;
+    }
+    for (const auto& tube : m_vocal_tubes) {
+        if (!last_drawn_position.has_value()
+            || tube.end > *last_drawn_position) {
+            last_drawn_position = tube.end;
+        }
+    }
+
+    if (!last_drawn_position.has_value()) {
         return;
     }
 
-    const auto last_note = std::ranges::max_element(
-        m_notes, [](auto a, auto b) { return a.beat < b.beat; });
-    const auto last_note_position = last_note->beat;
-
     for (const auto& section : practice_sections) {
         const auto pos = tempo_map.to_beats(section.start).value();
-        if (pos <= last_note_position) {
+        if (pos <= *last_drawn_position) {
             m_practice_sections.emplace_back(pos, section.name);
         }
     }
@@ -575,6 +728,13 @@ void ImageBuilder::add_sp_acts(const PointSet& points,
     }
 }
 
+void ImageBuilder::add_sp_acts(const VocalPath& path)
+{
+    for (const auto& act : path.activations) {
+        m_blue_ranges.emplace_back(act.start.value(), act.end.value());
+    }
+}
+
 void ImageBuilder::add_sp_percent_values(const SpData& sp_data,
                                          const SpTimeMap& time_map,
                                          const PointSet& points,
@@ -641,6 +801,12 @@ void ImageBuilder::add_sp_percent_values(const SpData& sp_data,
     assert(m_sp_percent_values.size() == m_measure_lines.size() - 1); // NOLINT
 }
 
+void ImageBuilder::add_sp_percent_values(const VocalsProcessedSong& song,
+                                         const VocalPath& path)
+{
+    m_sp_percent_values = song.sp_percent_values(m_measure_lines, path);
+}
+
 void ImageBuilder::add_sp_phrases(
     const SightRead::NoteTrack& track,
     const std::vector<SightRead::StarPower>& unison_phrases, const Path& path)
@@ -660,6 +826,20 @@ void ImageBuilder::add_sp_phrases(
                                  })
             != unison_phrases.cend()) {
             m_unison_ranges.push_back(range);
+        }
+    }
+}
+
+void ImageBuilder::add_sp_phrases(const SightRead::VocalTrack& track)
+{
+    const auto& tempo_map = track.global_data().tempo_map();
+    for (const auto& phrase : track.phrases()) {
+        const auto start = tempo_map.to_beats(phrase.position).value();
+        const auto end
+            = tempo_map.to_beats(phrase.position + phrase.length).value();
+        m_phrase_ranges.emplace_back(start, end);
+        if (phrase.is_sp_phrase) {
+            m_green_ranges.emplace_back(start, end);
         }
     }
 }
@@ -708,6 +888,20 @@ void ImageBuilder::set_total_score(const PointSet& points,
         solos.cbegin(), solos.cend(), 0,
         [](const auto x, const auto& y) { return x + y.value; });
     m_total_score = no_sp_score + path.score_boost;
+}
+
+void ImageBuilder::set_total_score(const VocalsProcessedSong& song,
+                                   const VocalPath& path)
+{
+    m_total_score = song.total_base_score() + path.score_boost;
+}
+
+void ImageBuilder::add_activation_windows(
+    const std::vector<VocalActivationWindow>& windows)
+{
+    for (const auto& window : windows) {
+        m_window_ranges.emplace_back(window.start.value(), window.end.value());
+    }
 }
 
 ImageBuilder make_builder(SightRead::Song& song,
@@ -807,6 +1001,54 @@ ImageBuilder make_builder(SightRead::Song& song,
             builder.add_bre(bres.back(), tempo_map);
         }
     }
+
+    return builder;
+}
+
+ImageBuilder make_builder(SightRead::Song& song,
+                          const SightRead::VocalTrack& track,
+                          const Settings& settings,
+                          const std::function<void(const char*)>& write,
+                          const std::atomic<bool>* terminate)
+{
+    static_cast<void>(terminate);
+
+    song.speedup(settings.speed);
+    const auto& tempo_map = song.global_data().tempo_map();
+
+    ImageBuilder builder {track, settings.difficulty, settings.is_lefty_flip};
+    builder.add_song_header(song.global_data());
+    builder.add_practice_sections(song.global_data().practice_sections(),
+                                  tempo_map);
+
+    if (settings.draw_bpms) {
+        builder.add_bpms(tempo_map);
+    }
+
+    if (settings.draw_time_sigs) {
+        builder.add_time_sigs(tempo_map);
+    }
+
+    const VocalsProcessedSong processed_track {track, settings.pathing_settings};
+    VocalPath path;
+
+    builder.add_sp_phrases(track);
+    builder.add_activation_windows(processed_track.activation_windows());
+
+    if (!settings.blank) {
+        write("Optimising, please wait...");
+        const VocalsOptimiser optimiser {&processed_track};
+        path = optimiser.optimal_path();
+        write(processed_track.path_summary(path,
+                                           settings.vocal_path_notation)
+                  .c_str());
+        builder.add_sp_acts(path);
+        builder.activation_opacity() = settings.opacity;
+    }
+
+    builder.add_measure_values(processed_track, path);
+    builder.add_sp_percent_values(processed_track, path);
+    builder.set_total_score(processed_track, path);
 
     return builder;
 }

@@ -29,6 +29,7 @@ struct JsonSettings {
     int whammy_delay;
     int video_lag;
     bool is_lefty_flip;
+    bool scorehero_vocal_notation;
     std::string last_directory;
 };
 

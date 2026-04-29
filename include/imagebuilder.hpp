@@ -35,6 +35,7 @@
 #include "processed.hpp"
 #include "sp.hpp"
 #include "sptimemap.hpp"
+#include "vocals.hpp"
 
 struct DrawnRow {
     double start;
@@ -46,6 +47,19 @@ struct DrawnNote {
     std::array<double, 7> lengths;
     SightRead::NoteFlags note_flags;
     bool is_sp_note;
+};
+
+struct DrawnVocalTube {
+    double start;
+    double end;
+    int pitch;
+    SightRead::VocalTubeType type;
+    bool is_sp_phrase;
+};
+
+struct DrawnLyric {
+    double beat;
+    std::string text;
 };
 
 class ImageBuilder {
@@ -76,6 +90,12 @@ private:
     std::vector<std::tuple<double, double>> m_bre_ranges;
     std::vector<std::tuple<double, double>> m_fill_ranges;
     std::vector<std::tuple<double, double>> m_unison_ranges;
+    std::vector<DrawnVocalTube> m_vocal_tubes;
+    std::vector<DrawnLyric> m_lyrics;
+    std::vector<std::tuple<double, double>> m_phrase_ranges;
+    std::vector<std::tuple<double, double>> m_window_ranges;
+    int m_min_vocal_pitch {60};
+    int m_max_vocal_pitch {72};
     float m_activation_opacity {0.33F};
     int m_total_score {0};
     bool m_overlap_engine {true};
@@ -93,6 +113,8 @@ public:
                  const SightRead::DrumSettings& drum_settings,
                  bool is_lefty_flip, bool is_overlap_engine,
                  bool trim_sustains);
+    ImageBuilder(const SightRead::VocalTrack& track,
+                 SightRead::Difficulty difficulty, bool is_lefty_flip);
     void add_bpms(const SightRead::TempoMap& tempo_map);
     void add_bre(const SightRead::BigRockEnding& bre,
                  const SightRead::TempoMap& tempo_map);
@@ -100,6 +122,8 @@ public:
     void add_measure_values(const PointSet& points,
                             const SightRead::TempoMap& tempo_map,
                             const Path& path);
+    void add_measure_values(const VocalsProcessedSong& song,
+                            const VocalPath& path);
     void add_practice_sections(
         const std::vector<SightRead::PracticeSection>& practice_sections,
         const SightRead::TempoMap& tempo_map);
@@ -108,17 +132,24 @@ public:
     void add_song_header(const SightRead::SongGlobalData& global_data);
     void add_sp_acts(const PointSet& points,
                      const SightRead::TempoMap& tempo_map, const Path& path);
+    void add_sp_acts(const VocalPath& path);
     void add_sp_percent_values(const SpData& sp_data, const SpTimeMap& time_map,
                                const PointSet& points, const Path& path,
                                const SpEngineValues& sp_engine_values);
+    void add_sp_percent_values(const VocalsProcessedSong& song,
+                               const VocalPath& path);
     void add_sp_phrases(const SightRead::NoteTrack& track,
                         const std::vector<SightRead::StarPower>& unison_phrases,
                         const Path& path);
+    void add_sp_phrases(const SightRead::VocalTrack& track);
     void add_sp_values(const SpData& sp_data, const Engine& engine);
     void add_time_sigs(const SightRead::TempoMap& tempo_map);
     void set_total_score(const PointSet& points,
                          const std::vector<SightRead::Solo>& solos,
                          const Path& path);
+    void set_total_score(const VocalsProcessedSong& song, const VocalPath& path);
+    void add_activation_windows(
+        const std::vector<VocalActivationWindow>& windows);
 
     [[nodiscard]] const std::string& artist() const { return m_artist; }
     [[nodiscard]] const std::vector<int>& base_values() const
@@ -150,6 +181,11 @@ public:
         return m_fill_ranges;
     }
     [[nodiscard]] const std::vector<std::tuple<double, double>>&
+    window_ranges() const
+    {
+        return m_window_ranges;
+    }
+    [[nodiscard]] const std::vector<std::tuple<double, double>>&
     green_ranges() const
     {
         return m_green_ranges;
@@ -165,6 +201,19 @@ public:
     [[nodiscard]] const std::vector<DrawnNote>& notes() const
     {
         return m_notes;
+    }
+    [[nodiscard]] const std::vector<DrawnVocalTube>& vocal_tubes() const
+    {
+        return m_vocal_tubes;
+    }
+    [[nodiscard]] const std::vector<DrawnLyric>& lyrics() const
+    {
+        return m_lyrics;
+    }
+    [[nodiscard]] const std::vector<std::tuple<double, double>>&
+    phrase_ranges() const
+    {
+        return m_phrase_ranges;
     }
     [[nodiscard]] const std::vector<std::tuple<double, std::string>>&
     practice_sections() const
@@ -220,6 +269,8 @@ public:
     }
     float& activation_opacity() { return m_activation_opacity; }
     [[nodiscard]] int total_score() const { return m_total_score; }
+    [[nodiscard]] int min_vocal_pitch() const { return m_min_vocal_pitch; }
+    [[nodiscard]] int max_vocal_pitch() const { return m_max_vocal_pitch; }
     [[nodiscard]] SightRead::Difficulty difficulty() const
     {
         return m_difficulty;
@@ -229,6 +280,11 @@ public:
 
 ImageBuilder make_builder(SightRead::Song& song,
                           const SightRead::NoteTrack& track,
+                          const Settings& settings,
+                          const std::function<void(const char*)>& write,
+                          const std::atomic<bool>* terminate);
+ImageBuilder make_builder(SightRead::Song& song,
+                          const SightRead::VocalTrack& track,
                           const Settings& settings,
                           const std::function<void(const char*)>& write,
                           const std::atomic<bool>* terminate);

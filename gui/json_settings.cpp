@@ -81,6 +81,7 @@ JsonSettings load_saved_settings(std::string_view application_dir)
     settings.whammy_delay = 0;
     settings.video_lag = 0;
     settings.is_lefty_flip = false;
+    settings.scorehero_vocal_notation = false;
     settings.last_directory = DEFAULT_LAST_DIRECTORY;
 
     QFile settings_file {settings_path(application_dir)};
@@ -106,6 +107,8 @@ JsonSettings load_saved_settings(std::string_view application_dir)
     settings.video_lag = read_value(
         obj, "video_lag", {.min = MIN_VIDEO_LAG, .max = MAX_VIDEO_LAG}, 0);
     settings.is_lefty_flip = read_json_bool(obj, "lefty_flip", false);
+    settings.scorehero_vocal_notation
+        = read_json_bool(obj, "scorehero_vocal_notation", false);
     settings.last_directory = read_directory(obj, "last_directory");
 
     return settings;
@@ -120,6 +123,8 @@ void save_settings(const JsonSettings& settings,
                              {"whammy_delay", settings.whammy_delay},
                              {"video_lag", settings.video_lag},
                              {"lefty_flip", settings.is_lefty_flip},
+                             {"scorehero_vocal_notation",
+                              settings.scorehero_vocal_notation},
                              {"last_directory",
                               QString::fromStdString(settings.last_directory)}};
     QFile settings_file {settings_path(application_dir)};

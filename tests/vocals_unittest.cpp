@@ -222,12 +222,12 @@ BOOST_AUTO_TEST_CASE(activation_windows_are_generated_from_phrase_content_gaps)
     const VocalsProcessedSong song {track, default_karaoke_pathing_settings()};
 
     BOOST_REQUIRE_EQUAL(song.activation_windows().size(), 2U);
-    BOOST_CHECK_CLOSE(song.activation_windows().at(0).start.value(), 1.0,
+    BOOST_CHECK_CLOSE(song.activation_windows().at(0).start.value(), 0.5,
                       0.0001);
-    BOOST_CHECK_CLOSE(song.activation_windows().at(0).end.value(), 2.0,
+    BOOST_CHECK_CLOSE(song.activation_windows().at(0).end.value(), 2.1875,
                       0.0001);
     BOOST_CHECK_EQUAL(song.activation_windows().at(0).target_phrase_index, 1U);
-    BOOST_CHECK_CLOSE(song.activation_windows().at(1).start.value(), 3.0,
+    BOOST_CHECK_CLOSE(song.activation_windows().at(1).start.value(), 2.5,
                       0.0001);
     BOOST_CHECK_CLOSE(song.activation_windows().at(1).end.value(), 4.0,
                       0.0001);
@@ -257,29 +257,68 @@ BOOST_AUTO_TEST_CASE(
     BOOST_CHECK(song.activation_windows().empty());
 }
 
-BOOST_AUTO_TEST_CASE(
-    multiple_internal_phrase_gaps_create_multiple_windows_for_one_phrase)
+BOOST_AUTO_TEST_CASE(vocal_path_summary_reports_skipped_activation_windows)
 {
     const auto track = make_vocal_track(
         {{.position = SightRead::Tick {0},
           .length = SightRead::Tick {192},
           .is_sp_phrase = true},
          {.position = SightRead::Tick {384},
-          .length = SightRead::Tick {960},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = false},
+         {.position = SightRead::Tick {768},
+          .length = SightRead::Tick {192},
           .is_sp_phrase = false}},
         {{.position = SightRead::Tick {0},
-          .length = SightRead::Tick {192},
+          .length = SightRead::Tick {96},
           .pitch = 60,
           .type = SightRead::VocalTubeType::Pitched},
-         {.position = SightRead::Tick {384},
-          .length = SightRead::Tick {192},
+         {.position = SightRead::Tick {420},
+          .length = SightRead::Tick {60},
           .pitch = 62,
           .type = SightRead::VocalTubeType::Pitched},
          {.position = SightRead::Tick {768},
           .length = SightRead::Tick {192},
           .pitch = 64,
+          .type = SightRead::VocalTubeType::Unpitched}});
+    const VocalsProcessedSong song {track, default_karaoke_pathing_settings()};
+    const VocalPath path {
+        .activations = {{.start_phrase_index = 2,
+                         .end_phrase_index = 2,
+                         .start = song.activation_windows().at(1).start,
+                         .end = song.phrases().at(2).end,
+                         .sp_start = 0.25}},
+        .phrase_score_boosts = {0, 0, song.phrases().at(2).base_score},
+        .score_boost = song.phrases().at(2).base_score};
+
+    BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 1/s1");
+    BOOST_CHECK_EQUAL(song.path_summary(path, VocalPathNotation::ScoreHero),
+                      "Acts: 1/sk1");
+}
+
+BOOST_AUTO_TEST_CASE(
+    multiple_internal_phrase_gaps_create_multiple_windows_for_one_phrase)
+{
+    const auto track = make_vocal_track(
+        {{.position = SightRead::Tick {0},
+         .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {384},
+          .length = SightRead::Tick {1104},
+          .is_sp_phrase = false}},
+        {{.position = SightRead::Tick {0},
+          .length = SightRead::Tick {192},
+          .pitch = 60,
           .type = SightRead::VocalTubeType::Pitched},
-         {.position = SightRead::Tick {1152},
+         {.position = SightRead::Tick {432},
+          .length = SightRead::Tick {192},
+          .pitch = 62,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {864},
+          .length = SightRead::Tick {192},
+          .pitch = 64,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {1296},
           .length = SightRead::Tick {192},
           .pitch = 65,
           .type = SightRead::VocalTubeType::Pitched}});
@@ -288,15 +327,15 @@ BOOST_AUTO_TEST_CASE(
     BOOST_REQUIRE_EQUAL(song.activation_windows().size(), 3U);
     BOOST_CHECK_CLOSE(song.activation_windows().at(0).start.value(), 1.0,
                       0.0001);
-    BOOST_CHECK_CLOSE(song.activation_windows().at(0).end.value(), 2.0,
+    BOOST_CHECK_CLOSE(song.activation_windows().at(0).end.value(), 2.25,
                       0.0001);
-    BOOST_CHECK_CLOSE(song.activation_windows().at(1).start.value(), 3.0,
+    BOOST_CHECK_CLOSE(song.activation_windows().at(1).start.value(), 3.25,
                       0.0001);
-    BOOST_CHECK_CLOSE(song.activation_windows().at(1).end.value(), 4.0,
+    BOOST_CHECK_CLOSE(song.activation_windows().at(1).end.value(), 4.5,
                       0.0001);
-    BOOST_CHECK_CLOSE(song.activation_windows().at(2).start.value(), 5.0,
+    BOOST_CHECK_CLOSE(song.activation_windows().at(2).start.value(), 5.5,
                       0.0001);
-    BOOST_CHECK_CLOSE(song.activation_windows().at(2).end.value(), 6.0,
+    BOOST_CHECK_CLOSE(song.activation_windows().at(2).end.value(), 6.75,
                       0.0001);
     BOOST_CHECK_EQUAL(song.activation_windows().at(0).target_phrase_index, 1U);
     BOOST_CHECK_EQUAL(song.activation_windows().at(1).target_phrase_index, 1U);
@@ -331,6 +370,47 @@ BOOST_AUTO_TEST_CASE(one_sp_phrase_is_enough_to_start_an_activation)
     BOOST_CHECK_LT(path.activations.at(0).start.value(), 2.0);
     BOOST_CHECK_GE(path.activations.at(0).sp_start, 0.25);
     BOOST_CHECK_GT(path.score_boost, 0);
+    BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 1/");
+}
+
+BOOST_AUTO_TEST_CASE(
+    activation_before_first_tube_after_phrase_start_is_not_an_esf)
+{
+    const auto track = make_vocal_track(
+        {{.position = SightRead::Tick {0},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {384},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {768},
+          .length = SightRead::Tick {384},
+          .is_sp_phrase = false}},
+        {{.position = SightRead::Tick {0},
+          .length = SightRead::Tick {192},
+          .pitch = 60,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {384},
+          .length = SightRead::Tick {192},
+          .pitch = 61,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {816},
+          .length = SightRead::Tick {336},
+          .pitch = 62,
+          .type = SightRead::VocalTubeType::Pitched}});
+    const VocalsProcessedSong song {track, default_rb_vocals_pathing_settings()};
+    const VocalsOptimiser optimiser {&song};
+    const auto path = optimiser.optimal_path();
+
+    BOOST_REQUIRE_EQUAL(path.activations.size(), 1U);
+    BOOST_CHECK_GT(path.activations.at(0).start.value(),
+                   song.phrases().at(2).start.value());
+    BOOST_CHECK_LT(path.activations.at(0).start.value(),
+                   song.phrases().at(2).scored_segments.front().start.value());
+    BOOST_CHECK(path.activations.at(0).esf_annotation.empty());
+    BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 2/");
+    BOOST_CHECK_EQUAL(song.path_summary(path, VocalPathNotation::ScoreHero),
+                      "Acts: 2/");
 }
 
 BOOST_AUTO_TEST_CASE(fortnite_karaoke_full_esf_boosts_the_entire_phrase_under_od)
@@ -367,6 +447,9 @@ BOOST_AUTO_TEST_CASE(fortnite_karaoke_full_esf_boosts_the_entire_phrase_under_od
     BOOST_REQUIRE_EQUAL(path.phrase_score_boosts.size(), 2U);
     BOOST_CHECK_EQUAL(path.phrase_score_boosts.at(1),
                       song.phrases().at(1).base_score);
+    BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 1/S");
+    BOOST_CHECK_EQUAL(song.path_summary(path, VocalPathNotation::ScoreHero),
+                      "Acts: 1/-ESF");
 }
 
 BOOST_AUTO_TEST_CASE(
@@ -377,7 +460,7 @@ BOOST_AUTO_TEST_CASE(
          .length = SightRead::Tick {192},
           .is_sp_phrase = true},
          {.position = SightRead::Tick {240},
-          .length = SightRead::Tick {1104},
+          .length = SightRead::Tick {1152},
           .is_sp_phrase = false}},
         {{.position = SightRead::Tick {0},
           .length = SightRead::Tick {192},
@@ -387,7 +470,7 @@ BOOST_AUTO_TEST_CASE(
           .length = SightRead::Tick {714},
           .pitch = 62,
           .type = SightRead::VocalTubeType::Pitched},
-         {.position = SightRead::Tick {1152},
+         {.position = SightRead::Tick {1200},
           .length = SightRead::Tick {192},
           .pitch = 64,
           .type = SightRead::VocalTubeType::Pitched}});
@@ -405,6 +488,9 @@ BOOST_AUTO_TEST_CASE(
     BOOST_CHECK_EQUAL(path.phrase_score_boosts.at(1),
                       static_cast<int>(
                           std::lround(song.phrases().at(1).base_score * 0.4)));
+    BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 1/S60");
+    BOOST_CHECK_EQUAL(song.path_summary(path, VocalPathNotation::ScoreHero),
+                      "Acts: 1/-ESP");
 }
 
 BOOST_AUTO_TEST_CASE(
@@ -449,12 +535,12 @@ BOOST_AUTO_TEST_CASE(
 {
     const auto track = make_vocal_track(
         {{.position = SightRead::Tick {0},
-          .length = SightRead::Tick {360},
+         .length = SightRead::Tick {360},
           .is_sp_phrase = true},
          {.position = SightRead::Tick {384},
-          .length = SightRead::Tick {576},
+          .length = SightRead::Tick {624},
           .is_sp_phrase = false},
-         {.position = SightRead::Tick {960},
+         {.position = SightRead::Tick {1008},
           .length = SightRead::Tick {192},
           .is_sp_phrase = false}},
         {{.position = SightRead::Tick {0},
@@ -465,11 +551,11 @@ BOOST_AUTO_TEST_CASE(
           .length = SightRead::Tick {192},
           .pitch = 62,
           .type = SightRead::VocalTubeType::Pitched},
-         {.position = SightRead::Tick {768},
+         {.position = SightRead::Tick {816},
           .length = SightRead::Tick {192},
           .pitch = 64,
           .type = SightRead::VocalTubeType::Pitched},
-         {.position = SightRead::Tick {960},
+         {.position = SightRead::Tick {1008},
           .length = SightRead::Tick {192},
           .pitch = 65,
           .type = SightRead::VocalTubeType::Pitched}});
@@ -480,9 +566,9 @@ BOOST_AUTO_TEST_CASE(
     BOOST_REQUIRE_EQUAL(path.activations.size(), 1U);
     BOOST_CHECK_EQUAL(path.activations.at(0).start_phrase_index, 1U);
     BOOST_CHECK_EQUAL(path.activations.at(0).end_phrase_index, 2U);
-    BOOST_CHECK_GT(path.activations.at(0).start.value(), 3.99);
-    BOOST_CHECK_LT(path.activations.at(0).start.value(), 4.0);
-    BOOST_CHECK_CLOSE(path.activations.at(0).end.value(), 6.0, 0.0001);
+    BOOST_CHECK_GT(path.activations.at(0).start.value(), 4.24);
+    BOOST_CHECK_LT(path.activations.at(0).start.value(), 4.25);
+    BOOST_CHECK_CLOSE(path.activations.at(0).end.value(), 6.25, 0.0001);
 
     BOOST_REQUIRE_EQUAL(path.phrase_score_boosts.size(), 3U);
     BOOST_CHECK_EQUAL(path.phrase_score_boosts.at(0), 0);
@@ -502,19 +588,47 @@ BOOST_AUTO_TEST_CASE(small_internal_phrase_gaps_do_not_create_windows)
 {
     const auto track = make_vocal_track(
         {{.position = SightRead::Tick {0},
-          .length = SightRead::Tick {660},
+          .length = SightRead::Tick {632},
           .is_sp_phrase = false}},
         {{.position = SightRead::Tick {0},
-          .length = SightRead::Tick {240},
+          .length = SightRead::Tick {192},
           .pitch = 60,
           .type = SightRead::VocalTubeType::Pitched},
-         {.position = SightRead::Tick {420},
+         {.position = SightRead::Tick {392},
           .length = SightRead::Tick {240},
           .pitch = 62,
           .type = SightRead::VocalTubeType::Pitched}});
     const VocalsProcessedSong song {track, default_karaoke_pathing_settings()};
 
     BOOST_CHECK(song.activation_windows().empty());
+}
+
+BOOST_AUTO_TEST_CASE(
+    fortnite_karaoke_phrase_boundary_gaps_use_full_tube_to_tube_duration)
+{
+    const auto track = make_vocal_track(
+        {{.position = SightRead::Tick {0},
+          .length = SightRead::Tick {240},
+          .is_sp_phrase = false},
+         {.position = SightRead::Tick {240},
+          .length = SightRead::Tick {384},
+          .is_sp_phrase = false}},
+        {{.position = SightRead::Tick {0},
+          .length = SightRead::Tick {192},
+          .pitch = 60,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {432},
+          .length = SightRead::Tick {192},
+          .pitch = 62,
+          .type = SightRead::VocalTubeType::Pitched}});
+    const VocalsProcessedSong song {track, default_karaoke_pathing_settings()};
+
+    BOOST_REQUIRE_EQUAL(song.activation_windows().size(), 1U);
+    BOOST_CHECK_EQUAL(song.activation_windows().at(0).target_phrase_index, 1U);
+    BOOST_CHECK_CLOSE(song.activation_windows().at(0).start.value(), 1.0,
+                      0.0001);
+    BOOST_CHECK_CLOSE(song.activation_windows().at(0).end.value(), 2.25,
+                      0.0001);
 }
 
 BOOST_AUTO_TEST_CASE(large_internal_phrase_gaps_create_windows)
