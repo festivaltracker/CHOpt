@@ -316,20 +316,16 @@ std::string esf_annotation(const VocalPhraseInfo& phrase,
                      required_prefill_fraction * 100.0 - SP_EPSILON)));
 }
 
-std::string squeeze_suffix(const std::string& annotation,
-                           VocalPathNotation notation)
+std::string scorehero_squeeze_text(const std::string& annotation)
 {
     if (annotation.empty()) {
         return "";
     }
-    if (notation == VocalPathNotation::Rbpv) {
-        return annotation;
-    }
     if (annotation == "S") {
-        return "-ESF";
+        return "ESF";
     }
     if (annotation.front() == 'S') {
-        return "-ESP";
+        return "ESP";
     }
     return "";
 }
@@ -862,7 +858,9 @@ VocalsProcessedSong::path_summary(const VocalPath& path,
         }
 
         const auto& activation = path.activations.at(i);
-        auto od_phrase_count = 0;
+        const auto od_phrase_count = std::max(
+            1, static_cast<int>(std::lround(
+                   activation.sp_start / m_sp_engine_values.phrase_amount)));
         auto ready_beat = std::optional<SightRead::Beat> {};
         for (std::size_t phrase_index = phrase_cursor;
              phrase_index < m_phrases.size(); ++phrase_index) {
@@ -871,14 +869,10 @@ VocalsProcessedSong::path_summary(const VocalPath& path,
                 break;
             }
             if (phrase.is_sp_phrase) {
-                ++od_phrase_count;
                 ready_beat = phrase.end;
             }
         }
-        if (od_phrase_count == 0) {
-            od_phrase_count = std::max(
-                1, static_cast<int>(std::lround(
-                       activation.sp_start / m_sp_engine_values.phrase_amount)));
+        if (!ready_beat.has_value()) {
             ready_beat = activation.start;
         }
 
@@ -918,7 +912,18 @@ VocalsProcessedSong::path_summary(const VocalPath& path,
             }
             stream << skip_count;
         }
-        stream << squeeze_suffix(activation.esf_annotation, notation);
+        if (notation == VocalPathNotation::Rbpv) {
+            stream << activation.esf_annotation;
+        } else {
+            const auto squeeze_text
+                = scorehero_squeeze_text(activation.esf_annotation);
+            if (!squeeze_text.empty()) {
+                if (skip_count > 0) {
+                    stream << '-';
+                }
+                stream << squeeze_text;
+            }
+        }
 
         phrase_cursor = activation.end_phrase_index + 1;
     }

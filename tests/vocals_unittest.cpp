@@ -345,6 +345,48 @@ BOOST_AUTO_TEST_CASE(
 }
 
 BOOST_AUTO_TEST_CASE(
+    vocal_path_summary_uses_sp_available_at_activation_start)
+{
+    const auto track = make_vocal_track(
+        {{.position = SightRead::Tick {0},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {192},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {384},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = false},
+         {.position = SightRead::Tick {576},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {768},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {960},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = false}});
+    const VocalsProcessedSong song {track, default_karaoke_pathing_settings()};
+    const VocalPath path {
+        .activations = {{.start_phrase_index = 2,
+                         .end_phrase_index = 3,
+                         .start = song.phrases().at(2).start,
+                         .end = song.phrases().at(3).end,
+                         .sp_start = 0.5},
+                        {.start_phrase_index = 5,
+                         .end_phrase_index = 5,
+                         .start = song.phrases().at(5).start,
+                         .end = song.phrases().at(5).end,
+                         .sp_start = 0.5}},
+        .phrase_score_boosts = {0, 0, 0, 0, 0, 0},
+        .score_boost = 0};
+
+    BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 2/ 2/");
+    BOOST_CHECK_EQUAL(song.path_summary(path, VocalPathNotation::ScoreHero),
+                      "Acts: 2/ 2/");
+}
+
+BOOST_AUTO_TEST_CASE(
     multiple_internal_phrase_gaps_create_multiple_windows_for_one_phrase)
 {
     const auto track = make_vocal_track(
@@ -497,7 +539,7 @@ BOOST_AUTO_TEST_CASE(fortnite_karaoke_full_esf_boosts_the_entire_phrase_under_od
                       song.phrases().at(1).base_score);
     BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 1/S");
     BOOST_CHECK_EQUAL(song.path_summary(path, VocalPathNotation::ScoreHero),
-                      "Acts: 1/-ESF");
+                      "Acts: 1/ESF");
 }
 
 BOOST_AUTO_TEST_CASE(
@@ -538,7 +580,7 @@ BOOST_AUTO_TEST_CASE(
                           std::lround(song.phrases().at(1).base_score * 0.4)));
     BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 1/S60");
     BOOST_CHECK_EQUAL(song.path_summary(path, VocalPathNotation::ScoreHero),
-                      "Acts: 1/-ESP");
+                      "Acts: 1/ESP");
 }
 
 BOOST_AUTO_TEST_CASE(
