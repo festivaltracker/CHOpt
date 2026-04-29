@@ -70,6 +70,7 @@ add_executable(
   src/sp.cpp
   src/sptimemap.cpp
   src/stringutil.cpp
+  src/vocals.cpp
   resources/chopt.exe.manifest
   resources/resources.qrc
   resources/resources.rc)
@@ -104,6 +105,7 @@ if(BUILD_GUI)
     src/sp.cpp
     src/sptimemap.cpp
     src/stringutil.cpp
+    src/vocals.cpp
     resources/choptgui.exe.manifest
     resources/resources.qrc
     resources/resources.rc)
@@ -135,6 +137,7 @@ if(PACKAGE_TESTS)
     tests/processed_unittest.cpp
     tests/sp_unittest.cpp
     tests/stringutil_unittest.cpp
+    tests/vocals_unittest.cpp
     src/imagebuilder.cpp
     src/optimiser.cpp
     src/points.cpp
@@ -142,11 +145,15 @@ if(PACKAGE_TESTS)
     src/settings.cpp
     src/sp.cpp
     src/sptimemap.cpp
-    src/stringutil.cpp)
+    src/stringutil.cpp
+    src/vocals.cpp)
 
   target_include_directories(chopt_tests
     PRIVATE "${PROJECT_SOURCE_DIR}/include")
-  target_link_libraries(chopt_tests PRIVATE Boost::locale Boost::unit_test_framework Qt6::Core sightread)
+  target_link_libraries(chopt_tests PRIVATE Boost::locale Qt6::Core sightread)
+  if(TARGET Boost::unit_test_framework)
+    target_link_libraries(chopt_tests PRIVATE Boost::unit_test_framework)
+  endif()
   add_test(NAME chopt_tests COMMAND chopt_tests)
   set_cpp_standard(chopt_tests)
   set_warnings(chopt_tests)
