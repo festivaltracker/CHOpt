@@ -862,6 +862,7 @@ VocalsProcessedSong::path_summary(const VocalPath& path,
             1, static_cast<int>(std::lround(
                    activation.sp_start / m_sp_engine_values.phrase_amount)));
         auto ready_beat = std::optional<SightRead::Beat> {};
+        auto accumulated_sp = 0.0;
         for (std::size_t phrase_index = phrase_cursor;
              phrase_index < m_phrases.size(); ++phrase_index) {
             const auto& phrase = m_phrases.at(phrase_index);
@@ -869,7 +870,11 @@ VocalsProcessedSong::path_summary(const VocalPath& path,
                 break;
             }
             if (phrase.is_sp_phrase) {
-                ready_beat = phrase.end;
+                accumulated_sp += m_sp_engine_values.phrase_amount;
+                if (!ready_beat.has_value()
+                    && accumulated_sp + SP_EPSILON >= activation.sp_start) {
+                    ready_beat = phrase.end;
+                }
             }
         }
         if (!ready_beat.has_value()) {
@@ -891,6 +896,19 @@ VocalsProcessedSong::path_summary(const VocalPath& path,
         auto skip_count = 0;
         const auto window_limit
             = current_window_index.value_or(m_activation_windows.size());
+        auto before_od_phrase = false;
+        if (current_window_index.has_value()) {
+            const auto& current_window
+                = m_activation_windows.at(*current_window_index);
+            if (current_window.target_phrase_index < m_phrases.size()) {
+                const auto& target_phrase
+                    = m_phrases.at(current_window.target_phrase_index);
+                before_od_phrase = od_phrase_count == 1
+                    && target_phrase.is_sp_phrase
+                    && current_window.start.value()
+                        < target_phrase.start.value() + SP_EPSILON;
+            }
+        }
         for (std::size_t window_index = 0; window_index < window_limit;
              ++window_index) {
             const auto& window = m_activation_windows.at(window_index);
@@ -904,7 +922,13 @@ VocalsProcessedSong::path_summary(const VocalPath& path,
         }
 
         stream << od_phrase_count << '/';
-        if (skip_count > 0) {
+        if (before_od_phrase) {
+            if (notation == VocalPathNotation::ScoreHero) {
+                stream << "BOD";
+            } else {
+                stream << 'B';
+            }
+        } else if (skip_count > 0) {
             if (notation == VocalPathNotation::ScoreHero) {
                 stream << "sk";
             } else {
@@ -925,7 +949,11 @@ VocalsProcessedSong::path_summary(const VocalPath& path,
             }
         }
 
-        phrase_cursor = activation.end_phrase_index + 1;
+        if (before_od_phrase) {
+            phrase_cursor = activation.start_phrase_index;
+        } else {
+            phrase_cursor = activation.end_phrase_index + 1;
+        }
     }
     return stream.str();
 }

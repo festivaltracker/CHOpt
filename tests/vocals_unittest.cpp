@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <utility>
@@ -384,6 +385,59 @@ BOOST_AUTO_TEST_CASE(
     BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 2/ 2/");
     BOOST_CHECK_EQUAL(song.path_summary(path, VocalPathNotation::ScoreHero),
                       "Acts: 2/ 2/");
+}
+
+BOOST_AUTO_TEST_CASE(vocal_path_summary_reports_before_od_activations)
+{
+    const auto track = make_vocal_track(
+        {{.position = SightRead::Tick {0},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true},
+         {.position = SightRead::Tick {384},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = false},
+         {.position = SightRead::Tick {768},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = false},
+         {.position = SightRead::Tick {1152},
+          .length = SightRead::Tick {192},
+          .is_sp_phrase = true}},
+        {{.position = SightRead::Tick {0},
+          .length = SightRead::Tick {96},
+          .pitch = 60,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {420},
+          .length = SightRead::Tick {96},
+          .pitch = 62,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {804},
+          .length = SightRead::Tick {96},
+          .pitch = 64,
+          .type = SightRead::VocalTubeType::Pitched},
+         {.position = SightRead::Tick {1200},
+          .length = SightRead::Tick {96},
+          .pitch = 65,
+          .type = SightRead::VocalTubeType::Pitched}});
+    const VocalsProcessedSong song {track, default_karaoke_pathing_settings()};
+    const auto before_od_window = std::ranges::find_if(
+        song.activation_windows(), [&](const auto& window) {
+            return window.target_phrase_index == 3U;
+        });
+    BOOST_REQUIRE(before_od_window != song.activation_windows().cend());
+    const VocalPath path {
+        .activations = {{.start_phrase_index = 3,
+                         .end_phrase_index = 3,
+                         .start = before_od_window->start,
+                         .end = song.phrases().at(3).end,
+                         .sp_start = 0.25}},
+        .phrase_score_boosts = {0, 0, 0, 0},
+        .score_boost = 0};
+
+    BOOST_CHECK_LT(path.activations.at(0).start.value(),
+                   song.phrases().at(3).start.value());
+    BOOST_CHECK_EQUAL(song.path_summary(path), "Acts: 1/B");
+    BOOST_CHECK_EQUAL(song.path_summary(path, VocalPathNotation::ScoreHero),
+                      "Acts: 1/BOD");
 }
 
 BOOST_AUTO_TEST_CASE(
