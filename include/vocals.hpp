@@ -93,6 +93,8 @@ private:
     SightRead::TempoMap m_tempo_map;
     SpTimeMap m_time_map;
     SpEngineValues m_sp_engine_values;
+    double m_sp_drain_rate;
+    bool m_active_sp_pickup_requires_phrase_start;
     std::vector<VocalPhraseInfo> m_phrases;
     std::vector<VocalActivationWindow> m_activation_windows;
     std::vector<std::vector<SightRead::Beat>> m_activation_starts;
@@ -121,6 +123,11 @@ public:
     [[nodiscard]] const SpEngineValues& sp_engine_values() const
     {
         return m_sp_engine_values;
+    }
+    [[nodiscard]] double sp_drain_rate() const { return m_sp_drain_rate; }
+    [[nodiscard]] bool active_sp_pickup_requires_phrase_start() const
+    {
+        return m_active_sp_pickup_requires_phrase_start;
     }
     [[nodiscard]] int total_base_score() const { return m_total_base_score; }
 
