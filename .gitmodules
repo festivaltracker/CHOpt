@@ -1,3 +1,4 @@
 [submodule "extern/sightread"]
 	path = extern/sightread
-	url = https://github.com/VenxmHG/SightRead.git
+	url = https://github.com/festivaltracker/SightRead.git
+	branch = feature/fortnite-festival-pro-drums
